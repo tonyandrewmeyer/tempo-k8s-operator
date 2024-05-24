@@ -1,3 +1,4 @@
+import dataclasses
 import socket
 from unittest.mock import patch
 
@@ -10,7 +11,7 @@ from scenario import Container, Relation, State
 
 @pytest.fixture
 def base_state():
-    return State(leader=True, containers=[Container("tempo", can_connect=False)])
+    return State(leader=True, containers={Container("tempo", can_connect=False)})
 
 
 def update_relations_tls_and_verify(
@@ -23,11 +24,11 @@ def update_relations_tls_and_verify(
     remote_scheme,
     tracing,
 ):
-    state = base_state.replace(relations=relations)
+    state = dataclasses.replace(base_state, relations=relations)
     with charm_tracing_disabled(), patch.object(TempoCharm, "tls_available", local_has_tls):
-        out = context.run(tracing.changed_event, state)
+        out = context.run(context.on.tracing_relation_changed(tracing), state)
     tracing_provider_app_data = TracingProviderAppData.load(
-        out.get_relations(tracing.endpoint)[0].local_app_data
+        out.get_relation(tracing.id).local_app_data
     )
     assert tracing_provider_app_data.host == socket.getfqdn()
     assert (
@@ -67,7 +68,7 @@ def test_tracing_endpoints_with_tls(
         has_ingress,
         local_has_tls,
         local_scheme,
-        relations,
+        set(relations),
         remote_scheme,
         tracing,
     )
@@ -93,7 +94,7 @@ def test_tracing_endpoints_tls_added_then_removed(context, base_state, has_ingre
         )
 
     result_state = update_relations_tls_and_verify(
-        base_state, context, has_ingress, False, local_scheme, relations, remote_scheme, tracing
+        base_state, context, has_ingress, False, local_scheme, set(relations), remote_scheme, tracing
     )
 
     # then we check the scenario where TLS gets enabled
@@ -112,7 +113,7 @@ def test_tracing_endpoints_tls_added_then_removed(context, base_state, has_ingre
         )
 
     result_state = update_relations_tls_and_verify(
-        result_state, context, has_ingress, True, local_scheme, relations, remote_scheme, tracing
+        result_state, context, has_ingress, True, local_scheme, set(relations), remote_scheme, tracing
     )
 
     # then we again remove TLS and compare the same thing
@@ -131,5 +132,5 @@ def test_tracing_endpoints_tls_added_then_removed(context, base_state, has_ingre
         )
 
     update_relations_tls_and_verify(
-        result_state, context, has_ingress, False, local_scheme, relations, remote_scheme, tracing
+        result_state, context, has_ingress, False, local_scheme, set(relations), remote_scheme, tracing
     )
